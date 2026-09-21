@@ -1,0 +1,86 @@
+name: Build MoPay APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Inject Supabase configuration
+        shell: bash
+        run: |
+          mkdir -p config
+          cat > config/supabase.properties <<EOF
+          SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+          SUPABASE_PUBLISHABLE_KEY=${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+          EOF
+
+      - name: Detect project structure
+        run: |
+          echo "=== Project files ==="
+          find . -maxdepth 3 -type f | sort | head -300
+
+      - name: Make Gradle executable
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Build APKs
+        shell: bash
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Collect APKs
+        shell: bash
+        run: |
+          mkdir -p release
+
+          find . \
+            -type f \
+            -name "*.apk" \
+            -not -path "./release/*" \
+            -exec cp {} release/ \;
+
+          echo "=== Generated APKs ==="
+          ls -lah release
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoPay-APKs
+          path: release/*.apk
+          if-no-files-found: error
