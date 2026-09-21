@@ -115,9 +115,9 @@ class MainActivity : Activity() {
     private fun panel(color:Int,r:Int)=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=round(color,r);setPadding(dp(17),dp(16),dp(17),dp(16))}
     private fun row(a:View,b:View)=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;addView(a,lp(0,-2,1f));addView(b,lp(-2,-2))}
     private fun pill(s:String,fill:Int,fg:Int)=text(s,10,fg,Typeface.BOLD).apply{gravity=Gravity.CENTER;background=round(fill,20);setPadding(dp(9),dp(5),dp(9),dp(5))}
-    private fun text(s:String,size:Float,color:Int,style:Int=Typeface.NORMAL)=TextView(this).apply{
+    private fun text(s:String,size:Number,color:Int,style:Int=Typeface.NORMAL)=TextView(this).apply{
         text=s
-        textSize=size
+        textSize=size.toFloat()
         setTextColor(color)
         typeface=Typeface.DEFAULT
         setTypeface(Typeface.DEFAULT,style)
