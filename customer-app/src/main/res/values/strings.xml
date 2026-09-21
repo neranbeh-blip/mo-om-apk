@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MoPay Customer</string>
+    <string name="hce_service_description">MoPay Demo NFC Card</string>
+</resources>
