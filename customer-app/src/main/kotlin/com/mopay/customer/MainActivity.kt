@@ -126,6 +126,6 @@ class MainActivity : Activity() {
     private fun money(n:Long)=NumberFormat.getNumberInstance(Locale.US).format(n)
     private fun formatDate(s:String)=try{val p=SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX",Locale.US);SimpleDateFormat("dd MMM • HH:mm",Locale.US).format(p.parse(s)?:Date())}catch(_:Exception){s.take(16).replace('T',' ')}
     private fun round(c:Int,r:Int)=android.graphics.drawable.GradientDrawable().apply{setColor(c);cornerRadius=dp(r).toFloat()}
-    private fun lp(w:Int,h:Int,weight:Float=0f,l:Int=0,t:Int=0,r:Int=0,b:Int=0)=LinearLayout.LayoutParams(w,h,weight).apply{setMargins(dp(l),dp(t),dp(r),dp(b))}
+    private fun lp(w:Int,h:Int,weight:Number=0,l:Int=0,t:Int=0,r:Int=0,b:Int=0)=LinearLayout.LayoutParams(w,h,weight.toFloat()).apply{setMargins(dp(l),dp(t),dp(r),dp(b))}
     private fun dp(v:Int)= (v*resources.displayMetrics.density).toInt()
 }
