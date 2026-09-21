@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build-apks:
-    name: Build MoPay APKs
+  build:
+    name: Build Android APKs
     runs-on: ubuntu-latest
 
     env:
@@ -20,9 +20,15 @@ jobs:
 
     steps:
 
+      # =========================================================
+      # CHECKOUT
+      # =========================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # =========================================================
+      # JAVA
+      # =========================================================
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -30,6 +36,9 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      # =========================================================
+      # ANDROID SDK
+      # =========================================================
       - name: Configure Android SDK
         shell: bash
         run: |
@@ -41,6 +50,7 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
+          echo ""
           echo "Searching for sdkmanager..."
 
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" \
@@ -58,31 +68,57 @@ jobs:
           echo "Using sdkmanager:"
           echo "$SDKMANAGER"
 
-          echo "Checking sdkmanager..."
+          echo ""
+          echo "sdkmanager version:"
           "$SDKMANAGER" --version
 
+          echo ""
           echo "Accepting Android SDK licenses..."
 
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
 
-          echo "Installing required Android SDK packages..."
+          echo ""
+          echo "Installing Android SDK packages..."
 
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-          echo "Android SDK configuration completed successfully."
+          echo ""
+          echo "Android SDK ready."
 
+      # =========================================================
+      # REPOSITORY INSPECTION
+      # =========================================================
       - name: Inspect repository
         shell: bash
         run: |
-          echo "Repository structure:"
-          find . -maxdepth 3 -type f \
-            ! -path './.git/*' \
-            | sort \
-            | head -300
+          echo ""
+          echo "=========================================="
+          echo "REPOSITORY STRUCTURE"
+          echo "=========================================="
 
+          find . \
+            -maxdepth 6 \
+            -type f \
+            ! -path "./.git/*" \
+            | sort
+
+          echo ""
+          echo "=========================================="
+          echo "GRADLE WRAPPERS"
+          echo "=========================================="
+
+          find . \
+            -type f \
+            -name "gradlew" \
+            ! -path "./.git/*" \
+            | sort
+
+      # =========================================================
+      # SUPABASE CONFIGURATION CHECK
+      # =========================================================
       - name: Check Supabase configuration
         shell: bash
         env:
@@ -91,137 +127,168 @@ jobs:
         run: |
           set -e
 
+          echo "Checking Supabase configuration..."
+
           if [ -z "$SUPABASE_URL" ]; then
-            echo "ERROR: NEXT_PUBLIC_SUPABASE_URL is missing."
+            echo "ERROR:"
+            echo "NEXT_PUBLIC_SUPABASE_URL is missing from GitHub Secrets."
             exit 1
           fi
 
           if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "ERROR: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing."
+            echo "ERROR:"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing from GitHub Secrets."
             exit 1
           fi
 
           echo "Supabase configuration detected."
 
-      - name: Build Customer MTN
+      # =========================================================
+      # BUILD ALL ANDROID PROJECTS AUTOMATICALLY
+      # =========================================================
+      - name: Build Android applications
         shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -e
 
-          cd customer-app/MTN
-          chmod +x gradlew
+          FOUND=0
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+          echo ""
+          echo "=========================================="
+          echo "SEARCHING FOR ANDROID PROJECTS"
+          echo "=========================================="
 
-      - name: Build Customer Orange
-        shell: bash
-        run: |
-          set -e
+          while IFS= read -r GRADLEW
+          do
 
-          cd customer-app/Orange
-          chmod +x gradlew
+            FOUND=1
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+            PROJECT_DIR="$(dirname "$GRADLEW")"
 
-      - name: Build Merchant MTN
-        shell: bash
-        run: |
-          set -e
+            echo ""
+            echo "=========================================="
+            echo "ANDROID PROJECT FOUND"
+            echo "=========================================="
+            echo "Project: $PROJECT_DIR"
+            echo "Gradle:  $GRADLEW"
+            echo "=========================================="
 
-          cd merchant-app/MTN
-          chmod +x gradlew
+            cd "$PROJECT_DIR"
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+            chmod +x ./gradlew
 
-      - name: Build Merchant Orange
-        shell: bash
-        run: |
-          set -e
+            echo ""
+            echo "Running Gradle build..."
 
-          cd merchant-app/Orange
-          chmod +x gradlew
+            ./gradlew clean assembleDebug \
+              -PSUPABASE_URL="$SUPABASE_URL" \
+              -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+            echo ""
+            echo "Build completed:"
+            echo "$PROJECT_DIR"
 
-      - name: Build Agent MTN
-        shell: bash
-        run: |
-          set -e
+            cd - >/dev/null
 
-          cd agent-app/MTN
-          chmod +x gradlew
+          done < <(
+            find . \
+              -type f \
+              -name "gradlew" \
+              ! -path "./.git/*" \
+              | sort
+          )
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+          if [ "$FOUND" -eq 0 ]; then
 
-      - name: Build Agent Orange
-        shell: bash
-        run: |
-          set -e
+            echo ""
+            echo "=========================================="
+            echo "ERROR: NO GRADLE PROJECT FOUND"
+            echo "=========================================="
 
-          cd agent-app/Orange
-          chmod +x gradlew
+            echo ""
+            echo "Files in repository:"
 
-          ./gradlew clean assembleDebug \
-            -PSUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            -PSUPABASE_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}"
+            find . \
+              -maxdepth 6 \
+              -type f \
+              ! -path "./.git/*" \
+              | sort
 
-      - name: Collect APKs
+            exit 1
+          fi
+
+          echo ""
+          echo "=========================================="
+          echo "ALL ANDROID PROJECTS BUILT"
+          echo "=========================================="
+
+      # =========================================================
+      # FIND APK FILES
+      # =========================================================
+      - name: Find generated APKs
         if: always()
         shell: bash
         run: |
-          mkdir -p release-apks
-
-          echo "Searching for APKs..."
+          echo ""
+          echo "=========================================="
+          echo "GENERATED APK FILES"
+          echo "=========================================="
 
           find . \
             -type f \
             -name "*.apk" \
-            ! -path './.git/*' \
+            ! -path "./.git/*" \
             | sort
 
-          find customer-app/MTN \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Customer-MTN.apk \; \
-            2>/dev/null || true
+      # =========================================================
+      # COLLECT APK FILES
+      # =========================================================
+      - name: Collect APKs
+        if: always()
+        shell: bash
+        run: |
+          set -e
 
-          find customer-app/Orange \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Customer-Orange.apk \; \
-            2>/dev/null || true
+          mkdir -p release-apks
 
-          find merchant-app/MTN \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Merchant-MTN.apk \; \
-            2>/dev/null || true
+          echo ""
+          echo "Collecting APK files..."
 
-          find merchant-app/Orange \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Merchant-Orange.apk \; \
-            2>/dev/null || true
+          APK_COUNT=0
 
-          find agent-app/MTN \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Agent-MTN.apk \; \
-            2>/dev/null || true
+          while IFS= read -r APK
+          do
 
-          find agent-app/Orange \
-            -type f -name "*.apk" \
-            -exec cp {} release-apks/MoPay-Agent-Orange.apk \; \
-            2>/dev/null || true
+            APK_COUNT=$((APK_COUNT + 1))
 
-          echo "Final APKs:"
+            FILENAME="$(basename "$APK")"
+
+            echo "Found: $APK"
+
+            cp "$APK" "release-apks/$FILENAME"
+
+          done < <(
+            find . \
+              -type f \
+              -name "*.apk" \
+              ! -path "./.git/*" \
+              | sort
+          )
+
+          echo ""
+          echo "Total APKs found: $APK_COUNT"
+
+          echo ""
+          echo "Release directory:"
+
           ls -lah release-apks || true
 
+      # =========================================================
+      # UPLOAD APKs
+      # =========================================================
       - name: Upload MoPay APKs
         if: always()
         uses: actions/upload-artifact@v4
@@ -231,6 +298,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # =========================================================
+      # UPLOAD GRADLE LOGS IF BUILD FAILS
+      # =========================================================
       - name: Upload Gradle reports
         if: failure()
         uses: actions/upload-artifact@v4
