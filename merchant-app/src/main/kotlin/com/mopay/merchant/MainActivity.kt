@@ -78,7 +78,7 @@ class MainActivity : Activity() {
     private fun pill(s:String,fill:Int,fg:Int)=text(s,10,fg,Typeface.BOLD).apply{gravity=Gravity.CENTER;background=round(fill,20);setPadding(dp(9),dp(5),dp(9),dp(5))}
     private fun button(s:String,fill:Int,fg:Int,a:()->Unit)=android.widget.Button(this).apply{text=s;textSize=12f;isAllCaps=false;typeface=Typeface.DEFAULT_BOLD;setTextColor(fg);background=round(fill,15);setOnClickListener{a()}}
     private fun navItem(i:String,l:String,a:()->Unit)=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setOnClickListener{a()};addView(text(i,21,black,Typeface.BOLD));addView(text(l,10,gray,Typeface.BOLD))}
-    private fun text(v:String,s:Float,c:Int,st:Int=Typeface.NORMAL)=TextView(this).apply{text=v;textSize=s;setTextColor(c);typeface=Typeface.create("sans",st)}
+    private fun text(v:String,s:Number,c:Int,st:Int=Typeface.NORMAL)=TextView(this).apply{text=v;textSize=s.toFloat();setTextColor(c);typeface=Typeface.create("sans",st)}
     private fun round(c:Int,r:Int)=android.graphics.drawable.GradientDrawable().apply{setColor(c);cornerRadius=dp(r).toFloat()}
     private fun money(v:Long)=NumberFormat.getNumberInstance(Locale.US).format(v)
     private fun formatDate(s:String)=try{val p=SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX",Locale.US);SimpleDateFormat("dd MMM • HH:mm",Locale.US).format(p.parse(s)?:Date())}catch(_:Exception){s.take(16).replace('T',' ')}
