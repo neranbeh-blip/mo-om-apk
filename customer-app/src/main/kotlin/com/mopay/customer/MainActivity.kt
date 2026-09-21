@@ -41,7 +41,7 @@ class MainActivity : Activity() {
     private fun load(){ executor.execute { try { val d=SupabaseClient.rpc("get_customer_dashboard",JSONObject().put("p_customer_id",customerId)); runOnUiThread{snapshot=d; cardStatus=d.optJSONObject("card")?.optString("status","active")?:"active"; home()} } catch(e:Exception){runOnUiThread{home(error=e.message)}} } }
 
     private fun home(error:String?=null){
-        val wallet=snapshot.optJSONObject("wallet")?:JSONObject(); val customer=snapshot.optJSONObject("customer")?:JSONObject(); val card=snapshot.optJSONObject("card")?:JSONObject()
+        val wallet=snapshot.optJSONObject("wallet")?:JSONObject(); val customer=snapshot.optJSONObject("customer")?:JSONObject(); val cardData=snapshot.optJSONObject("card")?:JSONObject()
         val root=screen(); val c=content(root)
         c.addView(appHeader(customer.optString("full_name","NGOH ERAN"),"Customer Wallet"))
         if(error!=null) c.addView(info("Offline / connection unavailable",error,red))
@@ -50,7 +50,7 @@ class MainActivity : Activity() {
         val grid=LinearLayout(this); grid.orientation=LinearLayout.VERTICAL
         grid.addView(actionRow(listOf(Triple("↥","Top Up",{topUp()}),Triple("→","Send",{sendHub()}),Triple("▣","Pay",{payPage()}),Triple("↓","Receive",{receivePage()}))))
         c.addView(grid)
-        val card=brandCard(card.optString("masked_number","•••• 4821"),customer.optString("full_name","NGOH ERAN"),cardStatus); c.addView(card,lp(-1,170,0,16,0,0)); c.addView(button("MANAGE CARD  ›",white,black){cardPage()},lp(-1,52,0,8,0,0))
+        val cardView=brandCard(cardData.optString("masked_number","•••• 4821"),customer.optString("full_name","NGOH ERAN"),cardStatus); c.addView(cardView,lp(-1,170,0,16,0,0)); c.addView(button("MANAGE CARD  ›",white,black){cardPage()},lp(-1,52,0,8,0,0))
         c.addView(sectionTitle("Recent activity","View all ›"){history()})
         val tx=snapshot.optJSONArray("transfers")?:JSONArray(); for(i in 0 until minOf(4,tx.length())) c.addView(txRow(tx.getJSONObject(i)))
         c.addView(nav())
@@ -115,6 +115,13 @@ class MainActivity : Activity() {
     private fun panel(color:Int,r:Int)=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=round(color,r);setPadding(dp(17),dp(16),dp(17),dp(16))}
     private fun row(a:View,b:View)=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;addView(a,lp(0,-2,1f));addView(b,lp(-2,-2))}
     private fun pill(s:String,fill:Int,fg:Int)=text(s,10,fg,Typeface.BOLD).apply{gravity=Gravity.CENTER;background=round(fill,20);setPadding(dp(9),dp(5),dp(9),dp(5))}
+    private fun text(s:String,size:Float,color:Int,style:Int=Typeface.NORMAL)=TextView(this).apply{
+        text=s
+        textSize=size
+        setTextColor(color)
+        typeface=Typeface.DEFAULT
+        setTypeface(Typeface.DEFAULT,style)
+    }
     private fun button(s:String,fill:Int,fg:Int,a:()->Unit)=android.widget.Button(this).apply{text=s;textSize=12f;isAllCaps=false;typeface=Typeface.DEFAULT_BOLD;setTextColor(fg);background=round(fill,15);setOnClickListener{a()}}
     private fun money(n:Long)=NumberFormat.getNumberInstance(Locale.US).format(n)
     private fun formatDate(s:String)=try{val p=SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX",Locale.US);SimpleDateFormat("dd MMM • HH:mm",Locale.US).format(p.parse(s)?:Date())}catch(_:Exception){s.take(16).replace('T',' ')}
