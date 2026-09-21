@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build Android APKs
+  build-apks:
+    name: Build MoPay Android Applications
     runs-on: ubuntu-latest
 
     env:
@@ -20,25 +20,35 @@ jobs:
 
     steps:
 
-      # =========================================================
-      # CHECKOUT
-      # =========================================================
+      # ==========================================================
+      # 1. CHECKOUT
+      # ==========================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # =========================================================
-      # JAVA
-      # =========================================================
+      # ==========================================================
+      # 2. JAVA 17
+      # ==========================================================
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      # =========================================================
-      # ANDROID SDK
-      # =========================================================
+      # ==========================================================
+      # 3. GRADLE 8.7
+      #
+      # The repository does not contain gradlew.
+      # Therefore GitHub Actions installs Gradle directly.
+      # ==========================================================
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # ==========================================================
+      # 4. ANDROID SDK
+      # ==========================================================
       - name: Configure Android SDK
         shell: bash
         run: |
@@ -65,7 +75,7 @@ jobs:
             exit 1
           fi
 
-          echo "Using sdkmanager:"
+          echo "Using:"
           echo "$SDKMANAGER"
 
           echo ""
@@ -86,39 +96,81 @@ jobs:
             "build-tools;35.0.0"
 
           echo ""
-          echo "Android SDK ready."
+          echo "Android SDK is ready."
 
-      # =========================================================
-      # REPOSITORY INSPECTION
-      # =========================================================
-      - name: Inspect repository
+      # ==========================================================
+      # 5. CREATE local.properties
+      # ==========================================================
+      - name: Configure Android SDK path
         shell: bash
         run: |
+          set -e
+
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+          echo "local.properties:"
+          cat local.properties
+
+      # ==========================================================
+      # 6. SHOW PROJECT STRUCTURE
+      # ==========================================================
+      - name: Inspect Gradle project
+        shell: bash
+        run: |
+          set -e
+
           echo ""
           echo "=========================================="
-          echo "REPOSITORY STRUCTURE"
+          echo "PROJECT STRUCTURE"
           echo "=========================================="
 
           find . \
-            -maxdepth 6 \
+            -maxdepth 3 \
             -type f \
             ! -path "./.git/*" \
             | sort
 
           echo ""
           echo "=========================================="
-          echo "GRADLE WRAPPERS"
+          echo "GRADLE VERSION"
           echo "=========================================="
 
-          find . \
-            -type f \
-            -name "gradlew" \
-            ! -path "./.git/*" \
-            | sort
+          gradle --version
 
-      # =========================================================
-      # SUPABASE CONFIGURATION CHECK
-      # =========================================================
+      # ==========================================================
+      # 7. CHECK SETTINGS
+      # ==========================================================
+      - name: Verify Gradle modules
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "Checking settings.gradle.kts..."
+
+          if [ ! -f "settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle.kts not found."
+            exit 1
+          fi
+
+          cat settings.gradle.kts
+
+          echo ""
+          echo "Checking application modules..."
+
+          for MODULE in customer-app merchant-app agent-app
+          do
+            if [ ! -f "$MODULE/build.gradle.kts" ]; then
+              echo "ERROR: $MODULE/build.gradle.kts not found."
+              exit 1
+            fi
+
+            echo "OK: $MODULE"
+          done
+
+      # ==========================================================
+      # 8. CHECK SUPABASE SECRETS
+      # ==========================================================
       - name: Check Supabase configuration
         shell: bash
         env:
@@ -127,26 +179,22 @@ jobs:
         run: |
           set -e
 
-          echo "Checking Supabase configuration..."
-
           if [ -z "$SUPABASE_URL" ]; then
-            echo "ERROR:"
-            echo "NEXT_PUBLIC_SUPABASE_URL is missing from GitHub Secrets."
+            echo "ERROR: NEXT_PUBLIC_SUPABASE_URL is missing."
             exit 1
           fi
 
           if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "ERROR:"
-            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing from GitHub Secrets."
+            echo "ERROR: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing."
             exit 1
           fi
 
-          echo "Supabase configuration detected."
+          echo "Supabase configuration is available."
 
-      # =========================================================
-      # BUILD ALL ANDROID PROJECTS AUTOMATICALLY
-      # =========================================================
-      - name: Build Android applications
+      # ==========================================================
+      # 9. GRADLE CONFIGURATION
+      # ==========================================================
+      - name: Configure Gradle build properties
         shell: bash
         env:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -154,80 +202,81 @@ jobs:
         run: |
           set -e
 
-          FOUND=0
+          echo ""
+          echo "Configuring build properties..."
+
+          cat >> gradle.properties <<EOF
+
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+          EOF
+
+          echo "Gradle properties configured."
+
+      # ==========================================================
+      # 10. CLEAN PROJECT
+      # ==========================================================
+      - name: Clean Gradle project
+        shell: bash
+        run: |
+          set -e
+
+          gradle clean --stacktrace
+
+      # ==========================================================
+      # 11. BUILD CUSTOMER
+      # ==========================================================
+      - name: Build Customer application
+        shell: bash
+        run: |
+          set -e
 
           echo ""
           echo "=========================================="
-          echo "SEARCHING FOR ANDROID PROJECTS"
+          echo "BUILDING CUSTOMER APPLICATION"
           echo "=========================================="
 
-          while IFS= read -r GRADLEW
-          do
+          gradle :customer-app:assembleDebug \
+            --stacktrace \
+            --no-daemon
 
-            FOUND=1
-
-            PROJECT_DIR="$(dirname "$GRADLEW")"
-
-            echo ""
-            echo "=========================================="
-            echo "ANDROID PROJECT FOUND"
-            echo "=========================================="
-            echo "Project: $PROJECT_DIR"
-            echo "Gradle:  $GRADLEW"
-            echo "=========================================="
-
-            cd "$PROJECT_DIR"
-
-            chmod +x ./gradlew
-
-            echo ""
-            echo "Running Gradle build..."
-
-            ./gradlew clean assembleDebug \
-              -PSUPABASE_URL="$SUPABASE_URL" \
-              -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-
-            echo ""
-            echo "Build completed:"
-            echo "$PROJECT_DIR"
-
-            cd - >/dev/null
-
-          done < <(
-            find . \
-              -type f \
-              -name "gradlew" \
-              ! -path "./.git/*" \
-              | sort
-          )
-
-          if [ "$FOUND" -eq 0 ]; then
-
-            echo ""
-            echo "=========================================="
-            echo "ERROR: NO GRADLE PROJECT FOUND"
-            echo "=========================================="
-
-            echo ""
-            echo "Files in repository:"
-
-            find . \
-              -maxdepth 6 \
-              -type f \
-              ! -path "./.git/*" \
-              | sort
-
-            exit 1
-          fi
+      # ==========================================================
+      # 12. BUILD MERCHANT
+      # ==========================================================
+      - name: Build Merchant application
+        shell: bash
+        run: |
+          set -e
 
           echo ""
           echo "=========================================="
-          echo "ALL ANDROID PROJECTS BUILT"
+          echo "BUILDING MERCHANT APPLICATION"
           echo "=========================================="
 
-      # =========================================================
-      # FIND APK FILES
-      # =========================================================
+          gradle :merchant-app:assembleDebug \
+            --stacktrace \
+            --no-daemon
+
+      # ==========================================================
+      # 13. BUILD AGENT
+      # ==========================================================
+      - name: Build Agent application
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "=========================================="
+          echo "BUILDING AGENT APPLICATION"
+          echo "=========================================="
+
+          gradle :agent-app:assembleDebug \
+            --stacktrace \
+            --no-daemon
+
+      # ==========================================================
+      # 14. FIND APK FILES
+      # ==========================================================
       - name: Find generated APKs
         if: always()
         shell: bash
@@ -243,9 +292,9 @@ jobs:
             ! -path "./.git/*" \
             | sort
 
-      # =========================================================
-      # COLLECT APK FILES
-      # =========================================================
+      # ==========================================================
+      # 15. COLLECT APKs
+      # ==========================================================
       - name: Collect APKs
         if: always()
         shell: bash
@@ -255,40 +304,75 @@ jobs:
           mkdir -p release-apks
 
           echo ""
-          echo "Collecting APK files..."
+          echo "Collecting APKs..."
 
-          APK_COUNT=0
+          # ------------------------------------------------------
+          # CUSTOMER
+          # ------------------------------------------------------
+          CUSTOMER_APK="$(find customer-app/build/outputs/apk \
+            -type f \
+            -name "*.apk" \
+            2>/dev/null \
+            | head -n 1 || true)"
 
-          while IFS= read -r APK
-          do
+          if [ -n "$CUSTOMER_APK" ]; then
+            cp "$CUSTOMER_APK" \
+              "release-apks/MoPay-Customer-MTN.apk"
 
-            APK_COUNT=$((APK_COUNT + 1))
+            echo "Customer APK:"
+            echo "$CUSTOMER_APK"
+          else
+            echo "WARNING: Customer APK not found."
+          fi
 
-            FILENAME="$(basename "$APK")"
+          # ------------------------------------------------------
+          # MERCHANT
+          # ------------------------------------------------------
+          MERCHANT_APK="$(find merchant-app/build/outputs/apk \
+            -type f \
+            -name "*.apk" \
+            2>/dev/null \
+            | head -n 1 || true)"
 
-            echo "Found: $APK"
+          if [ -n "$MERCHANT_APK" ]; then
+            cp "$MERCHANT_APK" \
+              "release-apks/MoPay-Merchant-MTN.apk"
 
-            cp "$APK" "release-apks/$FILENAME"
+            echo "Merchant APK:"
+            echo "$MERCHANT_APK"
+          else
+            echo "WARNING: Merchant APK not found."
+          fi
 
-          done < <(
-            find . \
-              -type f \
-              -name "*.apk" \
-              ! -path "./.git/*" \
-              | sort
-          )
+          # ------------------------------------------------------
+          # AGENT
+          # ------------------------------------------------------
+          AGENT_APK="$(find agent-app/build/outputs/apk \
+            -type f \
+            -name "*.apk" \
+            2>/dev/null \
+            | head -n 1 || true)"
+
+          if [ -n "$AGENT_APK" ]; then
+            cp "$AGENT_APK" \
+              "release-apks/MoPay-Agent-MTN.apk"
+
+            echo "Agent APK:"
+            echo "$AGENT_APK"
+          else
+            echo "WARNING: Agent APK not found."
+          fi
 
           echo ""
-          echo "Total APKs found: $APK_COUNT"
-
-          echo ""
-          echo "Release directory:"
+          echo "=========================================="
+          echo "RELEASE APKs"
+          echo "=========================================="
 
           ls -lah release-apks || true
 
-      # =========================================================
-      # UPLOAD APKs
-      # =========================================================
+      # ==========================================================
+      # 16. UPLOAD APK ARTIFACT
+      # ==========================================================
       - name: Upload MoPay APKs
         if: always()
         uses: actions/upload-artifact@v4
@@ -298,9 +382,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # =========================================================
-      # UPLOAD GRADLE LOGS IF BUILD FAILS
-      # =========================================================
+      # ==========================================================
+      # 17. UPLOAD GRADLE REPORTS ON FAILURE
+      # ==========================================================
       - name: Upload Gradle reports
         if: failure()
         uses: actions/upload-artifact@v4
