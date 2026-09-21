@@ -11,76 +11,242 @@ permissions:
 
 jobs:
   build:
+    name: Build Android APKs
     runs-on: ubuntu-latest
 
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
 
     steps:
+      # ---------------------------------------------------------
+      # 1. Checkout repository
+      # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------
+      # 2. Java
+      # ---------------------------------------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
+      # ---------------------------------------------------------
+      # 3. Android SDK
+      # ---------------------------------------------------------
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-
-      - name: Inject Supabase configuration
+      # ---------------------------------------------------------
+      # 4. Accept ALL Android SDK licenses
+      # ---------------------------------------------------------
+      - name: Accept Android SDK licenses
         shell: bash
         run: |
-          mkdir -p config
-          cat > config/supabase.properties <<EOF
-          SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-          SUPABASE_PUBLISHABLE_KEY=${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
-          EOF
+          yes | sdkmanager --licenses > /dev/null || true
 
-      - name: Detect project structure
-        run: |
-          echo "=== Project files ==="
-          find . -maxdepth 3 -type f | sort | head -300
-
-      - name: Make Gradle executable
-        run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          fi
-
-      - name: Build APKs
+      # ---------------------------------------------------------
+      # 5. Install required Android packages
+      # ---------------------------------------------------------
+      - name: Install Android SDK packages
         shell: bash
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --stacktrace
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
+      # ---------------------------------------------------------
+      # 6. Verify Android SDK
+      # ---------------------------------------------------------
+      - name: Verify Android SDK
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager --version
+          adb version
+          ls -la "$ANDROID_HOME/platforms"
+          ls -la "$ANDROID_HOME/build-tools"
+
+      # ---------------------------------------------------------
+      # 7. Make Gradle executable
+      # ---------------------------------------------------------
+      - name: Prepare Gradle
+        shell: bash
+        run: |
+          find . -name gradlew -type f -exec chmod +x {} \;
+
+      # ---------------------------------------------------------
+      # 8. Display repository structure
+      # ---------------------------------------------------------
+      - name: Check project structure
+        shell: bash
+        run: |
+          echo "Repository:"
+          find . -maxdepth 3 -type f \
+            ! -path './.git/*' \
+            | sort
+
+      # ---------------------------------------------------------
+      # 9. Build Customer MTN
+      # ---------------------------------------------------------
+      - name: Build Customer MTN
+        shell: bash
+        run: |
+          if [ -f "customer-app/MTN/gradlew" ]; then
+            cd customer-app/MTN
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "customer-app/MTN/build.gradle" ] || [ -f "customer-app/MTN/build.gradle.kts" ]; then
+            cd customer-app/MTN
+            gradle assembleDebug --no-daemon --stacktrace
           else
-            gradle assembleDebug --stacktrace
+            echo "Customer MTN project not found."
+            exit 1
           fi
 
+      # ---------------------------------------------------------
+      # 10. Build Customer Orange
+      # ---------------------------------------------------------
+      - name: Build Customer Orange
+        shell: bash
+        run: |
+          if [ -f "customer-app/Orange/gradlew" ]; then
+            cd customer-app/Orange
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "customer-app/Orange/build.gradle" ] || [ -f "customer-app/Orange/build.gradle.kts" ]; then
+            cd customer-app/Orange
+            gradle assembleDebug --no-daemon --stacktrace
+          else
+            echo "Customer Orange project not found."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------
+      # 11. Build Merchant MTN
+      # ---------------------------------------------------------
+      - name: Build Merchant MTN
+        shell: bash
+        run: |
+          if [ -f "merchant-app/MTN/gradlew" ]; then
+            cd merchant-app/MTN
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "merchant-app/MTN/build.gradle" ] || [ -f "merchant-app/MTN/build.gradle.kts" ]; then
+            cd merchant-app/MTN
+            gradle assembleDebug --no-daemon --stacktrace
+          else
+            echo "Merchant MTN project not found."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------
+      # 12. Build Merchant Orange
+      # ---------------------------------------------------------
+      - name: Build Merchant Orange
+        shell: bash
+        run: |
+          if [ -f "merchant-app/Orange/gradlew" ]; then
+            cd merchant-app/Orange
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "merchant-app/Orange/build.gradle" ] || [ -f "merchant-app/Orange/build.gradle.kts" ]; then
+            cd merchant-app/Orange
+            gradle assembleDebug --no-daemon --stacktrace
+          else
+            echo "Merchant Orange project not found."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------
+      # 13. Build Agent MTN
+      # ---------------------------------------------------------
+      - name: Build Agent MTN
+        shell: bash
+        run: |
+          if [ -f "agent-app/MTN/gradlew" ]; then
+            cd agent-app/MTN
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "agent-app/MTN/build.gradle" ] || [ -f "agent-app/MTN/build.gradle.kts" ]; then
+            cd agent-app/MTN
+            gradle assembleDebug --no-daemon --stacktrace
+          else
+            echo "Agent MTN project not found."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------
+      # 14. Build Agent Orange
+      # ---------------------------------------------------------
+      - name: Build Agent Orange
+        shell: bash
+        run: |
+          if [ -f "agent-app/Orange/gradlew" ]; then
+            cd agent-app/Orange
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          elif [ -f "agent-app/Orange/build.gradle" ] || [ -f "agent-app/Orange/build.gradle.kts" ]; then
+            cd agent-app/Orange
+            gradle assembleDebug --no-daemon --stacktrace
+          else
+            echo "Agent Orange project not found."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------
+      # 15. Collect APKs
+      # ---------------------------------------------------------
       - name: Collect APKs
         shell: bash
         run: |
-          mkdir -p release
+          mkdir -p release-apks
 
-          find . \
+          find customer-app/MTN \
             -type f \
             -name "*.apk" \
-            -not -path "./release/*" \
-            -exec cp {} release/ \;
+            -exec cp {} release-apks/MoPay-Customer-MTN.apk \; \
+            || true
 
-          echo "=== Generated APKs ==="
-          ls -lah release
+          find customer-app/Orange \
+            -type f \
+            -name "*.apk" \
+            -exec cp {} release-apks/MoPay-Customer-Orange.apk \; \
+            || true
 
-      - name: Upload APKs
+          find merchant-app/MTN \
+            -type f \
+            -name "*.apk" \
+            -exec cp {} release-apks/MoPay-Merchant-MTN.apk \; \
+            || true
+
+          find merchant-app/Orange \
+            -type f \
+            -name "*.apk" \
+            -exec cp {} release-apks/MoPay-Merchant-Orange.apk \; \
+            || true
+
+          find agent-app/MTN \
+            -type f \
+            -name "*.apk" \
+            -exec cp {} release-apks/MoPay-Agent-MTN.apk \; \
+            || true
+
+          find agent-app/Orange \
+            -type f \
+            -name "*.apk" \
+            -exec cp {} release-apks/MoPay-Agent-Orange.apk \; \
+            || true
+
+          echo ""
+          echo "Generated APKs:"
+          ls -lh release-apks || true
+
+      # ---------------------------------------------------------
+      # 16. Upload APKs
+      # ---------------------------------------------------------
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: MoPay-APKs
-          path: release/*.apk
+          path: release-apks/*.apk
           if-no-files-found: error
+          retention-days: 30
